@@ -1,0 +1,35 @@
+{
+    "name": "daxvir/restclient",
+    "description": "An elegant and smart Rest API Client with OAuth2 authentication support for laravel",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Virendra Jadeja",
+            "email": "virendrajadeja84@gmail.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "autoload": {
+        "psr-4": {
+            "Daxvir\\RestClient\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=5.5",
+        "guzzlehttp/guzzle": "^6.0",
+        "laravel/framework": "^5.2"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Daxvir\\RestClient\\RestClientServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "@php artisan vendor:publish --tag=restclient-config --force"
+        ]
+    }
+}
