@@ -1,9 +1,10 @@
-<?php 
+<?php
 
 namespace Daxvir\RestClient;
 
 use GuzzleHttp\Client;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 
@@ -99,13 +100,17 @@ class RestClient
 
         // choose service environment
         if (!isset($services[$this->environment])) {
-            throw new RuntimeException("Rest Client Error: Service for environment [{$this->environment}] is not found in config.");
+            throw new RuntimeException(
+                "Rest Client Error: Service for environment [{$this->environment}] is not found in config."
+            );
         }
         $services = $services[$this->environment];
 
         // check service configs
         if (!isset($services[$service_name])) {
-            throw new RuntimeException("Rest Client Error: Service [$service_name] is not found in environment [{$this->environment}] config.");
+            throw new RuntimeException(
+                "Rest Client Error: Service [$service_name] is not found in environment [{$this->environment}] config."
+            );
         }
 
         $this->printLine("--------");
@@ -114,6 +119,7 @@ class RestClient
         // get cache
         $minutes = $this->getConfig('oauth_tokens_cache_minutes', 10);
         $this->use_cache_token = $minutes > 0;
+
         $this->useOAuthTokenFromCache();
 
         $this->setServiceConfig($services[$service_name]);
@@ -172,7 +178,7 @@ class RestClient
         foreach ($baseConfig as $key => $config) {
             if (is_array($config) && isset($combined_service_config[$key])) {
                 $combined_service_config[$key] = array_merge($config, $combined_service_config[$key]);
-            } else if (!isset($combined_service_config[$key])) {
+            } elseif (!isset($combined_service_config[$key])) {
                 $combined_service_config[$key] = $config;
             }
         }
@@ -195,14 +201,14 @@ class RestClient
     {
         $base_uri = $this->getServiceConfig('base_uri');
         $guzzle_client_config = $this->getConfig('guzzle_client_config', []);
-        // if (!ends_with($base_uri, '/')) {
-        //     $base_uri .= '/';
-        // }
         $this->printLine("REST CLIENT BASE URI: " . $base_uri);
         $this->client = new Client(array_merge($guzzle_client_config, [
             'base_uri' => $base_uri,
             'exceptions' => false,
         ]));
+
+        $grant_type = $this->getConfig('grant_type', 'client_credentials');
+        $this->withOAuthToken($grant_type);
     }
 
     /**
@@ -244,7 +250,7 @@ class RestClient
     }
 
     /**
-     * @param $grant_type
+     * @param string $grant_type
      * @param array $data
      */
     public function setOAuthGrantRequestData($grant_type, array $data)
@@ -260,7 +266,9 @@ class RestClient
     public function getOAuthGrantRequestData($grant_type)
     {
         if (!isset($this->oauth_grant_request_data[$grant_type])) {
-            throw new RuntimeException('Request Data was not found for grant type [' . $grant_type . '] in "oauth_grant_request_data"');
+            throw new RuntimeException(
+                'Request Data was not found for grant type [' . $grant_type . '] in "oauth_grant_request_data"'
+            );
         }
         $data = $this->oauth_grant_request_data[$grant_type];
         return array_merge($this->getClientData(), $data);
@@ -277,8 +285,6 @@ class RestClient
         $response = $this->post($url, array_merge($data, [
             'grant_type' => $grant_type,
         ]), [], true);
-
-        dd($response);
     }
 
     /**
@@ -319,40 +325,33 @@ class RestClient
             return;
         }
 
-        $this->oauth_tokens = \Cache::get($this->getOauthTokensCacheKey(), []);
-        
+        $this->oauth_tokens = Cache::get($this->getOauthTokensCacheKey(), []);
         if (!empty($this->oauth_tokens)) {
             $this->printLine("Using OAuth Tokens from cache:");
             $this->printArray($this->oauth_tokens);
-        }else{
-            $token = $this->getTokenFromLogin();
-            if ($token) {
-                $this->setOAuthToken(self::GRANT_TYPE_AUTHORIZATION_CODE, $token);
-                $this->use_oauth_token_grant_type = self::GRANT_TYPE_AUTHORIZATION_CODE;
-            }            
         }
     }
 
     /**
      * @return string
      */
-    private function getTokenFromLogin(){
+    private function getTokenUsingCurl($grant_type, $data)
+    {
         $token = null;
         $serviceConfig = $this->getConfig('shared_service_config');
         $endpoint = $serviceConfig['api_url'];
-        $data = $serviceConfig['oauth2_credentials'];
         $url = $serviceConfig['oauth2_access_token_url'];
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $endpoint.$url);
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
         curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, array_merge($data, ['grant_type' => $grant_type]));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec ($ch);
-        curl_close ($ch);
+        $response = curl_exec($ch);
+        curl_close($ch);
         $response = json_decode($response);
-        if ($response->success){
-            $token = $response->data->token;
+        if ($response->access_token) {
+            $token = $response->access_token;
         }
         return $token;
     }
@@ -379,18 +378,7 @@ class RestClient
         $grant_types = $this->getServiceConfig('oauth2_grant_types');
         if (!isset($this->oauth_tokens[$grant_type])) {
             // request access token
-            $this->postRequestAccessToken($grant_type, $this->getOAuthGrantRequestData($grant_type));
-
-            // handle access token
-            if ($this->getResponse()->getStatusCode() != 200) {
-                throw new RuntimeException('Failed to get access token for grant type [' . $grant_type . ']!');
-            }
-
-            $data = $this->getResponseData();
-            if (!isset($data['access_token'])) {
-                throw new RuntimeException('"access_token" is not exists in the response data!');
-            }
-            $access_token = $data['access_token'];
+            $access_token = $this->getTokenUsingCurl($grant_type, $this->getOAuthGrantRequestData($grant_type));
             $this->setOAuthToken($grant_type, $access_token);
         }
         return $this->oauth_tokens[$grant_type];
@@ -414,7 +402,7 @@ class RestClient
 
         // update to cache
         $minutes = $this->getConfig('oauth_tokens_cache_minutes', 10);
-        \Cache::put($this->getOauthTokensCacheKey(), $this->oauth_tokens, $minutes);
+        Cache::put($this->getOauthTokensCacheKey(), $this->oauth_tokens, $minutes);
     }
 
     /**
@@ -478,7 +466,7 @@ class RestClient
     public function get($uri, array $query = [], array $options = [], $api = true)
     {
         $options = $this->configureOptions($options);
-        $uri = $api ? $this->getServiceConfig('api_url') . $uri : $uri;
+        $uri = $api ? $this->getServiceConfig('base_uri') . $uri : $uri;
         $this->printArray($options);
         $response = $this->client->get($uri, array_merge($options, [
             'query' => $query,
@@ -762,5 +750,4 @@ class RestClient
             print_r($array);
         }
     }
-
 }

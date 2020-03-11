@@ -20,6 +20,12 @@ return array(
     'oauth_tokens_cache_minutes' => 10,
 
     /**
+     * Access Toke type
+     * Options are password | client_credentials | authorization_code | refresh_token
+     */
+    'grant_type' => 'password',
+
+    /**
      *  Guzzle Client Config
      */
     'guzzle_client_config' => [
@@ -35,14 +41,16 @@ return array(
             'User-Agent' => 'daxvir-testing/1.0',
         ],
 
-        'api_url' => 'localhost/api/',
+        'api_url' => 'http://api:8080/',
 
         'oauth2_credentials' => [
-            'email' => 'virendrajadeja@esense.in',
+            'username' => 'virendrajadeja@esense.in',
             'password' => '123456789',
+            'client_id' => 5,
+            'client_secret' => 'MQsTd6jKVXkdYXR7T4FqJLmPyGkbHqzEJZNh0Znx'
         ],
 
-        'oauth2_access_token_url' => 'login',
+        'oauth2_access_token_url' => 'oauth/token',
 
         'oauth2_grant_types' => [
             'client_credentials' => 'client_credentials',
@@ -65,7 +73,7 @@ return array(
         // environment: dev
         'dev' => [
             'local' => [
-                'base_uri' => 'http://localhost/api/',
+                'base_uri' => 'http://api:8080/api/',
                 'headers' => [
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
@@ -73,17 +81,16 @@ return array(
             ],
 
             'daxvir-starter' => [
-                'base_uri' => 'http://localhost/api/',
+                'base_uri' => 'http://api:8080/api/',
                 'headers' => [
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json'
                 ],
             ],
         ],
         // environment: production
         'production' => [
             'daxvir-starter' => [
-                'base_uri' => 'http://localhost/api/',
+                'base_uri' => 'http://api:8080/api/',
                 'headers' => [
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
